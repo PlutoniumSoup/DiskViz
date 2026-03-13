@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DiskViz</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font: 13px sans-serif;
+            background: #F0F0F0;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .toolbar {
+            background: #fff;
+            border-bottom: 1px solid #ddd;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .toolbar button, .toolbar input {
+            font: 13px sans-serif;
+            padding: 6px 12px;
+            border: 1px solid #ccc;
+            background: #fff;
+            color: #333;
+        }
+        .toolbar button.btn-primary { background: #FFD700; border-color: #e6c200; font-weight: 600; }
+        .toolbar button.btn-primary:hover { background: #ffe44d; }
+        .toolbar button:not(.btn-primary):hover { background: #f0f0f0; }
+        .toolbar button.btn-secondary { background: #e8e8e8; color: #555; }
+        .toolbar input { width: 220px; background: #fff; color: #000; }
+        .breadcrumbs { flex: 1; overflow-x: auto; white-space: nowrap; }
+        .breadcrumbs a { color: #333; margin: 0 2px; text-decoration: none; }
+        .breadcrumbs a:hover { text-decoration: underline; color: #000; }
+        .scan-status { font-size: 12px; color: #666; margin-left: 8px; }
+        .scan-status.scanning { color: #333; font-weight: 600; }
+        .layout { display: flex; flex: 1; min-height: 0; }
+        .sidebar {
+            width: 240px;
+            background: #fff;
+            border-right: 1px solid #ddd;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        .sidebar h2 { margin: 0 0 10px; font-size: 14px; font-weight: 700; color: #333; }
+        .drive-item {
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            background: #fafafa;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .drive-item:hover { background: #fff9e6; border-color: #FFD700; }
+        .drive-item .letter { font-weight: 700; color: #333; }
+        .drive-item .bar { height: 6px; background: #e0e0e0; margin-top: 6px; overflow: hidden; }
+        .drive-item .bar span { display: block; height: 100%; background: #FFD700; }
+        .main { flex: 1; padding: 12px; overflow: auto; background: #F0F0F0; }
+        .info-line { margin-bottom: 12px; font-size: 14px; color: #555; }
+        .info-line strong { color: #000; font-size: 14px; }
+        .panel {
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+        .panel h3 { margin: 0 0 10px; font-size: 14px; font-weight: 700; color: #333; }
+        .pie-wrap { width: 100%; max-width: 320px; height: 220px; }
+        table { border-collapse: collapse; width: 100%; background: #fff; border: 1px solid #ddd; }
+        th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+        th {
+            background: #FFD700;
+            font-weight: 700;
+            font-size: 12px;
+            color: #333;
+            white-space: nowrap;
+            cursor: pointer;
+            user-select: none;
+        }
+        th:hover { background: #ffe44d; }
+        th.sort-asc::after { content: " ▲"; font-size: 10px; }
+        th.sort-desc::after { content: " ▼"; font-size: 10px; }
+        tbody tr:nth-child(even) { background: #f8f8f8; }
+        tbody tr:nth-child(odd) { background: #fff; }
+        tr:hover { background: #fff9e6 !important; }
+        td.name-cell { cursor: pointer; color: #333; }
+        td.name-cell:hover { text-decoration: underline; }
+        td.size-cell { text-align: right; font-family: Consolas, monospace; font-size: 12px; }
+        .progress-cell { width: 140px; }
+        .progress-bar {
+            height: 18px;
+            background: #e8e8e8;
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+        .progress-bar span { display: block; height: 100%; background: #FFD700; min-width: 2px; }
+        .progress-bar span.warn { background: #e6b800; }
+        .progress-bar span.danger { background: #c0392b; }
+        #global-loading {
+            position: fixed;
+            top: 12px;
+            right: 12px;
+            padding: 6px 12px;
+            background: #FFD700;
+            border: 1px solid #e6c200;
+            font-size: 12px;
+            z-index: 100;
+            font-weight: 600;
+        }
+        #global-loading.hidden { display: none; }
+        .disk-info { margin-top: auto; padding-top: 12px; border-top: 1px solid #ddd; font-size: 12px; color: #555; }
+        .disk-info .bar { height: 6px; background: #e0e0e0; margin: 6px 0; overflow: hidden; }
+        .disk-info .bar span { display: block; height: 100%; background: #FFD700; }
+        .hint { font-size: 11px; color: #888; margin-top: 10px; }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.2);
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: #fff;
+            border: 1px solid #ddd;
+            width: 90%;
+            max-width: 720px;
+            max-height: 82vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .modal-header {
+            padding: 10px 14px;
+            background: #FFD700;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 700;
+        }
+        .modal-header .close { cursor: pointer; padding: 2px 8px; font-size: 18px; color: #333; }
+        .modal-header .close:hover { background: rgba(0,0,0,0.1); }
+        .modal-body { padding: 10px; overflow: auto; flex: 1; }
+        .modal-body table { border: 1px solid #ddd; }
+        .modal-body th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <div id="global-loading" class="hidden">Обработка…</div>
+
+    <div class="toolbar">
+        <button type="button" onclick="goUp()" class="btn-secondary">Вверх</button>
+        <button type="button" onclick="refresh()" class="btn-secondary" title="Обновить">↻</button>
+        <div id="breadcrumbs" class="breadcrumbs"></div>
+        <span id="scan-status" class="scan-status"></span>
+        <input id="search-input" type="text" placeholder="Поиск">
+        <button type="button" onclick="rescanCurrent()" class="btn-primary" title="Пересканировать папку и сбросить кэш">Проверить заново</button>
+        <button type="button" onclick="showLargestModal()" class="btn-secondary">Тяжёлые файлы</button>
+    </div>
+
+    <div class="layout">
+        <aside class="sidebar">
+            <h2>Диски</h2>
+            <div id="drives-list"></div>
+            <div id="disk-info" class="disk-info"></div>
+            <div class="hint" title="Запуск от имени администратора или права на папку (Свойства → Безопасность).">Нет доступа к папке?</div>
+        </aside>
+        <main class="main">
+            <div class="info-line">Размер текущей папки: <strong id="current-size">—</strong></div>
+            <div class="panel">
+                <h3>Топ папок по размеру</h3>
+                <div class="pie-wrap"><canvas id="pie-chart"></canvas></div>
+            </div>
+            <div class="panel">
+                <h3>Содержимое</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:28px"></th>
+                            <th data-sort="name">Имя</th>
+                            <th data-sort="size" style="text-align:right; width:90px">Размер</th>
+                            <th class="progress-cell">Доля</th>
+                            <th data-sort="type" style="width:80px">Тип</th>
+                            <th data-sort="modified" style="width:125px">Изменено</th>
+                        </tr>
+                    </thead>
+                    <tbody id="file-table-body"></tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div id="largest-modal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <span>Самые тяжёлые файлы (топ-30)</span>
+                <span class="close" onclick="hideModal()">×</span>
+            </div>
+            <div class="modal-body">
+                <table>
+                    <thead>
+                        <tr><th>Имя</th><th>Путь</th><th style="text-align:right">Размер</th></tr>
+                    </thead>
+                    <tbody id="largest-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>
